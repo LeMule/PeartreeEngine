@@ -18,10 +18,10 @@ struct Position
 class Pear
 {
 public:
-	Pear(std::vector<float>&, std::vector<int>&, std::vector<unsigned int>&, const std::string&, const std::string&);
+	Pear(std::vector<float>&, std::vector<int>&, std::vector<unsigned int>&);
 	~Pear();
 
-	virtual bool Draw(glm::mat4&, glm::mat4&, glm::mat4&);
+	virtual bool Draw(Shader*, glm::mat4&, glm::mat4&, glm::mat4&);
 
 	virtual void SetXPos(float x);
 	virtual void SetYPos(float y);
@@ -32,12 +32,12 @@ private:
 	bool InitIndices(std::vector<int>&);
 	bool InitShaderAttributes();
 	bool Destroy();
+	bool has_changed;
 
 	unsigned int VAO;
 	unsigned int VBO;
 	unsigned int EBO;
-	
-	Shader* m_shader;
+
 	std::vector<unsigned int> m_textureIDs;
 	std::vector<float> m_vertices;
 	std::vector<int> m_indices;

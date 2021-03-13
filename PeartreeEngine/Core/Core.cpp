@@ -1,38 +1,49 @@
 #pragma once
+
+/*These will enable essentially what they imply, logged to the console. */
+//#define __BENCHMARK_RENDERLOOP__
+//#define __DEBUG_CAMERA_POSITION__
+
+#define SDL_MAIN_HANDLED // Tell SDL not to mess with main()
+#include <unordered_map>
+#include <fstream>
+#include <future>
+#include <deque>
+#include <glad.h>
+#include <SDL.h>
+#include <SDL_syswm.h>
+#include <SDL_opengl.h>
+
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 #include "Model.h"
 #include "Pear.h"
 #include "Logging.h"
 #include "Camera.h"
 #include "BenchmarkTimer.h"
-#define __BENCHMARK_RENDERLOOP__
-//#define __GAMES_FOLDER_DEVELOPMENT__ "D:/Workspace/PeartreeEngine/branches/BaseGame"
-#include <fstream>
-#include <glad.h>
-#include <GLFW/glfw3.h>
-#include <unordered_map>
-#include <future>
 
-//PearMath
+//TODO: Implement Window Resizing CB for SDL
+void OnWindowResize(SDL_Window* window, int width, int height);
 
-void CB_FrameBufferSize(GLFWwindow* window, int width, int height);
-void CB_MouseCursor(GLFWwindow* window, double xpos, double ypos);
-void CB_MouseScroll(GLFWwindow* window, double xoffset, double yoffset);
-void CB_MouseButton(GLFWwindow* window, int button, int action, int mods);
-void ProcessInput(GLFWwindow* window);
-void InitPears();
+void OnMouseMotion(SDL_Window* window, double xpos, double ypos);
+void OnMouseScroll(SDL_Window* window, double xoffset, double yoffset);
+void ProcessInput(SDL_Window* window);
 
-std::vector<Pear*> gameObjects;
-PearTree::Model* jeep;
+//Test Stuff. Eventually move to a basegame.
+void InitTestPearBatch();
+std::deque<Pear*> gameObjects;
 
-std::vector<std::future<void>> m_futures;
+//Core Vars
 std::string m_GamesFolder;
-
-bool lookAroundFlag = false;
+bool running = true;
 
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
-float lastX = 800 / 2.0f;
-float lastY = 600 / 2.0f;
+Camera camera(glm::vec3(0.0f, 1.0f, 0.0f));
+float lastX = 1200 / 2.0f;
+float lastY = 800 / 2.0f;
+bool lookAroundFlag = true;
 bool firstMouse = true;
 
 struct PearSpace
@@ -40,9 +51,12 @@ struct PearSpace
 	glm::mat4 model;
 	glm::mat4 view;
 	glm::mat4 projection;
+	uint16_t width;
+	uint16_t height;
 } pearSpace;
 
-int main(unsigned int argc, const char** argv)
+/*############### MAIN ##################*/
+int main(int argc, const char** argv)
 {
 #ifdef __GAMES_FOLDER_DEVELOPMENT__
 	m_GamesFolder = __GAMES_FOLDER_DEVELOPMENT__;
@@ -52,131 +66,106 @@ int main(unsigned int argc, const char** argv)
 		LOG(argv[0]);
 		m_GamesFolder = argv[1];
 		if (m_GamesFolder == "")
-			m_GamesFolder = "../BaseGame/"; //Default folder if we navigate from the Core's root folder.
+			m_GamesFolder = "../../../../BaseGame/"; //Default folder if we navigate from the Core's root build folder.
 	}
 	else
-		m_GamesFolder = "../BaseGame/"; //Default folder if we navigate from the Core's root folder.
+		m_GamesFolder = "../../../../BaseGame/"; //Default folder if we navigate from the Core's root build folder.
 #endif
 
-	glfwInit();
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	glfwWindowHint(GLFW_SAMPLES, 4);
+	if (SDL_Init(SDL_INIT_VIDEO) != 0)
+	{
+		LOG(SDL_GetError());
+	}
+	SDL_GL_LoadLibrary(NULL);
+	SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+	
+	SDL_SetRelativeMouseMode(SDL_TRUE);
 
-#ifdef APPLE_LOL	
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
-
-	GLFWwindow* window = glfwCreateWindow(800, 600, "Peartree 0.1", NULL, NULL);
+	SDL_Window* window = SDL_CreateWindow("Peartree 0.5", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1200, 800, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 	if (window == NULL)
 	{
-		LOG("Failed creating GLFW window");
-		glfwTerminate();
+		LOG("Failed creating SDL window");
 		return -1;
 	}
-	glfwMakeContextCurrent(window);
-	
-	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+	SDL_GLContext maincontext = SDL_GL_CreateContext(window);
+	if (maincontext == NULL)
 	{
-		LOG("Failed to initialize GLAD");
+		LOG("Failed creating OpenGL context");
 		return -1;
 	}
 
-	glViewport(0, 0, 800, 600);
-	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_BLEND);
-	
+	gladLoadGLLoader(SDL_GL_GetProcAddress);
+
+	LOG(glGetString(GL_VENDOR));
+	LOG(glGetString(GL_RENDERER));
 	LOG(glGetString(GL_VERSION));
 
-	glfwSetFramebufferSizeCallback(window, CB_FrameBufferSize);
-	glfwSetCursorPosCallback(window, CB_MouseCursor);
-	glfwSetScrollCallback(window, CB_MouseScroll);
-	glfwSetMouseButtonCallback(window, CB_MouseButton);
-	stbi_set_flip_vertically_on_load(true);
+	// V-Sync ... Does this *need* to be called after window creation or can we set this with the other folks up there?
+	SDL_GL_SetSwapInterval(1);
 
-	//Creates our Game Objects that we will be rendering
-	InitPears();
-
-	jeep = new PearTree::Model(m_GamesFolder + "Media/Models/jeep/jeep.obj");
-
-	const std::string vertexShaderFile = m_GamesFolder + "Media/Shaders/ModelVertexShader.glsl";
-	const std::string fragmentShaderFile = m_GamesFolder + "Media/Shaders/ModelFragmentShader.glsl";
-
-	unsigned int tex = PearTree::Model::TextureFromFile("Media/Models/jeep/texture.jpg", m_GamesFolder, false);
-
-	Shader jeepShader(vertexShaderFile, fragmentShaderFile);
-
+	//World-space vars
 	glm::mat4 model = glm::mat4(1.0f);
-	model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+	model = glm::rotate(model, glm::radians(-0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
 	glm::mat4 view = glm::mat4(1.0f);
 	// note that we're translating the scene in the reverse direction of where we want to move
-	view = glm::translate(view, glm::vec3(0.0f, 0.0f, -3.0f));
+	view = glm::translate(view, glm::vec3(0.0f, 0.0f, 0.0f));
 
 	glm::mat4 projection = glm::mat4(1.0f);
 	projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
 
+	uint16_t gameWidth = 1200;
+	uint16_t gameHeight = 800;
+
 	pearSpace.model = model;
 	pearSpace.view = view;
 	pearSpace.projection = projection;
+	pearSpace.width = gameWidth;
+	pearSpace.height = gameHeight;
+
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+
+	glViewport(0, 0, pearSpace.width, pearSpace.height);
+	stbi_set_flip_vertically_on_load(true);
+
+	//Shaders
+	//We need a better way of handling these obviously.
+	const std::string vertexShaderFile = m_GamesFolder + "Media/Shaders/BaseVertexShader.glsl";
+	const std::string fragmentShaderFile = m_GamesFolder + "Media/Shaders/BaseFragmentShader.glsl";
+	Shader* baseShader = new Shader(vertexShaderFile, fragmentShaderFile);
+
+	//Creates our Game Objects that we will be rendering
+	InitTestPearBatch();
 	
-	std::ofstream outfile("outputfile.txt", std::ios::out);
-
-	while (!glfwWindowShouldClose(window))
+	while (running)
 	{
-		ProcessInput(window);
-		glfwPollEvents();
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 #ifdef __BENCHMARK_RENDERLOOP__
 		BenchmarkTimer bt("RenderLoop", std::cout);
 #endif
+		ProcessInput(window);
 
-		/*pearSpace.projection = glm::perspective(glm::radians(camera.Zoom), 800.0f / 600.0f, 0.1f, 100.0f);
-		pearSpace.view = camera.GetViewMatrix();*/
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		// view/projection transformations
-		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)800 / (float)600, 0.1f, 100.0f);
 		glm::mat4 view = camera.GetViewMatrix();
-		jeepShader.setMat4("projection", projection);
-		jeepShader.setMat4("view", view);
-
-		// render the loaded model
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); // translate it down so it's at the center of the scene
-		model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));	// it's a bit too big for our scene, so scale it down
-		jeepShader.setMat4("model", model);
-
-		pearSpace.projection = projection;
 		pearSpace.view = view;
-		pearSpace.model = model;
-
-		//Render our Pears.
-		std::vector<Pear*>::iterator goIt = gameObjects.begin();
-		while( goIt != gameObjects.end())
-		{			
-			(*goIt)->Draw(pearSpace.model, pearSpace.view, pearSpace.projection);
+		
+		std::deque<Pear*>::iterator goIt = gameObjects.begin();
+		while( goIt != gameObjects.end() )
+		{		
+			(*goIt)->Draw(baseShader, pearSpace.model, pearSpace.view, pearSpace.projection);
 			goIt++;
 		}
 		
-		//Render our Jeep.
-		{
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, tex);
-
-			jeepShader.Use();
-			jeep->Draw(jeepShader);
-
-			glBindTexture(GL_TEXTURE_2D, 0);
-		}
-
-		glfwSwapBuffers(window);
+		SDL_GL_SwapWindow(window);
 	}
 
-	//Clean-up all our Game Objects
-	std::vector<Pear*>::iterator goIt = gameObjects.begin();
+	std::deque<Pear*>::iterator goIt = gameObjects.begin();
 	while (goIt != gameObjects.end())
 	{
 		delete (*goIt);
@@ -184,19 +173,21 @@ int main(unsigned int argc, const char** argv)
 		goIt++;
 	}
 
-	glfwTerminate();
+	SDL_DestroyWindow(window);
+	SDL_Quit();
 	LOG("===== SUCCESSFULLY SHUTDOWN SYSTEM =====");
 	return 0;
 }
 
-void CB_FrameBufferSize(GLFWwindow* window, int width, int height)
+//TODO: Implement Window Resizing for SDL
+void OnWindowResize(SDL_Window* window, int width, int height)
 {
 	LOG("===== New Viewport WIDTH : " + std::to_string(width));
 	LOG("===== New Viewport HEIGHT : " + std::to_string(height));
 	glViewport(0, 0, width, height);
 }
 
-void CB_MouseCursor(GLFWwindow* window, double xpos, double ypos)
+void OnMouseMotion(SDL_Window* window, double xpos, double ypos)
 {
 	if (firstMouse)
 	{
@@ -217,104 +208,96 @@ void CB_MouseCursor(GLFWwindow* window, double xpos, double ypos)
 	camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
-void CB_MouseScroll(GLFWwindow* window, double xoffset, double yoffset)
+void OnMouseScroll(SDL_Window* window, double xoffset, double yoffset)
 {
 	camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
-void CB_MouseButton(GLFWwindow* window, int button, int action, int mods)
+void ProcessInput(SDL_Window* window)
 {
-	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+	const Uint8* keys = SDL_GetKeyboardState(NULL);
+	if (keys[SDL_SCANCODE_W])
 	{
-		lookAroundFlag = true;
+		camera.ProcessKeyboard(Camera_Movement::FORWARD, 0.1f);
 	}
-	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE)
+	if (keys[SDL_SCANCODE_A])
 	{
-		lookAroundFlag = false;
+		camera.ProcessKeyboard(Camera_Movement::LEFT, 0.1f);
 	}
-}
+	if (keys[SDL_SCANCODE_S])
+	{
+		camera.ProcessKeyboard(Camera_Movement::BACKWARD, 0.1f);
+	}
+	if (keys[SDL_SCANCODE_D])
+	{
+		camera.ProcessKeyboard(Camera_Movement::RIGHT, 0.1f);
+	}
+	if (keys[SDL_SCANCODE_SPACE])
+	{
+		camera.Position.g += 0.1f;
+	}
 
+#ifdef __DEBUG_CAMERA_POSITION__
+	LOG("===== NEW CAMERA POS ===== \n x : " << camera.Position.r << " y : " << camera.Position.g << " z : " << camera.Position.b);
+#endif
 
-void ProcessInput(GLFWwindow* window)
-{
-	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-		glfwSetWindowShouldClose(window, true);
-	if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS)
+	SDL_Event evt;
+	while (SDL_PollEvent(&evt))
 	{
-		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-		LOG("===== WIREFRAME MODE:::ON");
-	}
-	if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS)
-	{
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-		LOG("===== WIREFRAME MODE:::OFF");
-	}
-	if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS)
-	{
-		glEnable(GL_MULTISAMPLE);
-		LOG("===== ANTIALIASING:::ON");
-	}
-	if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS)
-	{
-		glDisable(GL_MULTISAMPLE);
-		LOG("===== ANTIALIASING:::OFF");
-	}
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-	{
-		camera.ProcessKeyboard(FORWARD, 0.1f);
-		LOG("===== MOVING CAMERA:::FORWARD");
-	}
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-	{
-		camera.ProcessKeyboard(LEFT, 0.1f);
-		LOG("===== MOVING CAMERA:::LEFT");
-	}
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-	{
-		camera.ProcessKeyboard(BACKWARD, 0.1f);
-		LOG("===== MOVING CAMERA:::BACKWARD");
-	}
-	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-	{
-		camera.ProcessKeyboard(RIGHT, 0.1f);
-		LOG("===== MOVING CAMERA:::RIGHT");
+		switch (evt.type)
+		{
+		case SDL_QUIT:
+			running = false;
+			break;
+		case SDL_KEYDOWN:
+		{
+			switch (evt.key.keysym.sym)
+			{
+			case SDLK_ESCAPE:
+				running = false;
+				break;
+			case SDLK_1:
+				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+				LOG("===== WIREFRAME MODE:::ON");
+				break;
+			case SDLK_2:
+				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+				LOG("===== WIREFRAME MODE:::OFF");
+				break;
+			case SDLK_3:
+				glEnable(GL_MULTISAMPLE);
+				LOG("===== ANTIALIASING:::ON");
+				break;
+			case SDLK_4:
+				glDisable(GL_MULTISAMPLE);
+				LOG("===== ANTIALIASING:::OFF");
+				break;
+			}
+		}
+		break;
+		case SDL_MOUSEMOTION:
+			static int x, y = 0;
+			x += evt.motion.xrel;
+			y += evt.motion.yrel;
+			OnMouseMotion(window, x, y);
+			break;
+		}
 	}
 }	
 
-//static std::mutex s_GameObjectMutex;
-void InitPear(std::vector<Pear*>& _gameObjects,
+//Game Code.
+void InitPear(std::deque<Pear*>& _gameObjects,
 	std::vector<float>& _vertices,
 	std::vector<int>& _indices,
-	std::vector<unsigned int> _textureIDs,
-	const std::string& _vertexShaderFile,
-	const std::string& _fragmentShaderFile)
+	std::vector<unsigned int> _textureIDs)
 {
-	//std::lock_guard<std::mutex> lock(s_GameObjectMutex);
-	_gameObjects.push_back(new Pear(_vertices, _indices, _textureIDs, _vertexShaderFile, _fragmentShaderFile));
+	_gameObjects.push_back(new Pear(_vertices, _indices, _textureIDs));
 };
 
-void InitPears()
+void InitTestPearBatch()
 {
-	//Pear 1
-	const std::string vertexShaderFile = m_GamesFolder + "Media/Shaders/BaseVertexShader.glsl";
-	const std::string fragmentShaderFile = m_GamesFolder + "Media/Shaders/BaseFragmentShader.glsl";
-
 	std::vector<int> indices = std::vector<int>();
-	std::vector<int> indices2 =
-	{
-		0, 1, 3,
-		1, 2, 3
-	};
-
-	std::vector<float> vertices2 = 
-	{
-		 // positions         // colors           // texture coords
-		 0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f,   // top right
-		 0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,   // bottom right
-		-0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f,   // bottom left
-		-0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f    // top left 
-	};
-
+	//Hard-code these beauties :) ... we should really have some kind of parser.
 	std::vector<float> vertices =
 	{
 		// positions          // colors          // texture coords
@@ -361,53 +344,30 @@ void InitPears()
 		-0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f
 	};
 
-	glm::vec3 cubePositions[] = 
-	{
-		glm::vec3(0.0f,  0.0f,  0.0f),
-		glm::vec3(2.0f,  5.0f, -15.0f),
-		glm::vec3(-1.5f, -2.2f, -2.5f),
-		glm::vec3(-3.8f, -2.0f, -12.3f),
-		glm::vec3(2.4f, -0.4f, -3.5f),
-		glm::vec3(-1.7f,  3.0f, -7.5f),
-		glm::vec3(1.3f, -2.0f, -2.5f),
-		glm::vec3(1.5f,  2.0f, -2.5f),
-		glm::vec3(1.5f,  0.2f, -1.5f),
-		glm::vec3(-1.3f,  1.0f, -1.5f)
-	};
-
-	unsigned int tex = PearTree::Model::TextureFromFile("Media/Graphics/Mario.jpg", m_GamesFolder, false);
-	unsigned int tex2 = PearTree::Model::TextureFromFile("Media/Graphics/HappyDog.png", m_GamesFolder, false);
-	std::vector<unsigned int> textureIDs = { tex , tex2 };
-	unsigned int MAX_NUM_GAME_OBJECTS = 10;
+	unsigned int tex = PearTree::Model::TextureFromFile("Media/Graphics/HappyDog.png", m_GamesFolder, false);
+	unsigned int tex2 = PearTree::Model::TextureFromFile("Media/Graphics/Mario.jpg", m_GamesFolder, false);
+	std::vector<unsigned int> textureIDs = { tex, tex2 };
+	unsigned int MAX_NUM_GAME_OBJECTS = 100;
 	unsigned int count = 0;
-	{
-		//BenchmarkTimer bt("InitPears 500 Reserved Pears", std::cout);
-		while (MAX_NUM_GAME_OBJECTS != count)
-		{
-			//m_futures.push_back(std::async(std::launch::async, InitPear, gameObjects, vertices, indices, tex.ID, vertexShaderFile, fragmentShaderFile));
-			InitPear(gameObjects, vertices, indices, textureIDs, vertexShaderFile, fragmentShaderFile);
-			gameObjects.at(count)->SetXPos(cubePositions[count].r);
-			gameObjects.at(count)->SetYPos(cubePositions[count].g);
-			gameObjects.at(count)->SetZPos(cubePositions[count].b);
-			count++;
-		}
 
-		for (int i = 0; i < 10; i++)
+	bool spawning_column = false;
+	unsigned int column = 1;
+
+	BenchmarkTimer bt("Loading World...", std::cout);
+	for (int i = -8; i != 8; i++)
+	{
+		for (int j = -8; j != 8; j++)
 		{
-			for (int j = 0; j < 10; j++)
+			for (int k = -8; k != 8; k++)
 			{
-				InitPear(gameObjects, vertices2, indices2, textureIDs, vertexShaderFile, fragmentShaderFile);
-				gameObjects.at(count)->SetXPos(static_cast<float>(i));
-				gameObjects.at(count)->SetYPos(static_cast<float>(j));
+				InitPear(gameObjects, vertices, indices, textureIDs);
+				gameObjects.at(count)->SetXPos((float)i);
+				gameObjects.at(count)->SetYPos((float)k);
+				gameObjects.at(count)->SetZPos((float)j - 24.f);
 				count++;
 			}
 		}
 	}
-}
-
-void InitPlayer();
-void InitPlayer()
-{
 }
 
 

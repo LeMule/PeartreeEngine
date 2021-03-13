@@ -9,11 +9,11 @@
 
 //thirdparty
 #include <glad.h>
-#include <GLFW/glfw3.h>
+#include <SDL.h>
 
-Pear::Pear(std::vector<float>& vertices, std::vector<int>& indices, std::vector<unsigned int>& textureIDs, const std::string& vertexShaderFile, const std::string& fragmentShaderFile)
-	: m_shader(new Shader(vertexShaderFile, fragmentShaderFile)),
-	m_textureIDs(textureIDs)
+Pear::Pear(std::vector<float>& vertices, std::vector<int>& indices, std::vector<unsigned int>& textureIDs)
+	: m_textureIDs(textureIDs),
+	  has_changed(true)
 {
 	glGenVertexArrays(1, &VAO);
 	glBindVertexArray(VAO);
@@ -36,61 +36,58 @@ Pear::~Pear()
 	}
 }
 
-bool Pear::Draw(glm::mat4& model, glm::mat4& view, glm::mat4& projection)
+bool Pear::Draw(Shader* shader, glm::mat4& model, glm::mat4& view, glm::mat4& projection)
 {
-	//Do the Shader business first
-	m_shader->Use();
+	shader->Use();
 
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, m_textureIDs.at(0));
+	unsigned int posLoc = 0;
+	if (has_changed)
+	{
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_textureIDs.at(0));
+		posLoc = glGetUniformLocation(shader->ID, "_texture1");
+		glUniform1i(posLoc, m_textureIDs.at(0));
+		
 
-	unsigned int posLoc = glGetUniformLocation(m_shader->ID, "_texture1");
-	glUniform1i(posLoc, m_textureIDs.at(0));
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_textureIDs.at(1));
+		posLoc = glGetUniformLocation(shader->ID, "_texture2");
+		glUniform1i(posLoc, m_textureIDs.at(1));
+	}
 
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, m_textureIDs.at(1));
-
-	posLoc = glGetUniformLocation(m_shader->ID, "_texture2");
-	glUniform1i(posLoc, m_textureIDs.at(1));
-
-	//Bind our VAO for rendering.
 	glBindVertexArray(VAO);
 
-	//Position First.
-	posLoc = glGetUniformLocation(m_shader->ID, "x");
-	glUniform1f(posLoc, m_pos.x);
+	if (has_changed)
+	{
+		posLoc = glGetUniformLocation(shader->ID, "x");
+		glUniform1f(posLoc, m_pos.x);
 
-	posLoc = glGetUniformLocation(m_shader->ID, "y");
-	glUniform1f(posLoc, m_pos.y);
+		posLoc = glGetUniformLocation(shader->ID, "y");
+		glUniform1f(posLoc, m_pos.y);
 
-	posLoc = glGetUniformLocation(m_shader->ID, "z");
-	glUniform1f(posLoc, m_pos.z);
+		posLoc = glGetUniformLocation(shader->ID, "z");
+		glUniform1f(posLoc, m_pos.z);
+	}
 
-	//Transform.
-	float timeValue = glfwGetTime();
+	float timeValue = SDL_GetTicks();
 	glm::mat4 trans = glm::mat4(1.0f);
-	/*trans = glm::rotate(trans, glm::radians(sin(timeValue) + m_rotation), glm::vec3(0.0, 0.0, 1.0));
-	trans = glm::scale(trans, glm::vec3(1.0, 1.0, 1.0));*/
-	posLoc = glGetUniformLocation(m_shader->ID, "transform");
+	posLoc = glGetUniformLocation(shader->ID, "transform");
 	glUniformMatrix4fv(posLoc, 1, GL_FALSE, glm::value_ptr(trans));
 
-	//Apply Space Matrices.
-	posLoc = glGetUniformLocation(m_shader->ID, "model");
+	posLoc = glGetUniformLocation(shader->ID, "model");
 	glUniformMatrix4fv(posLoc, 1, GL_FALSE, glm::value_ptr(model));
-	
-	posLoc = glGetUniformLocation(m_shader->ID, "view");
+
+	posLoc = glGetUniformLocation(shader->ID, "view");
 	glUniformMatrix4fv(posLoc, 1, GL_FALSE, glm::value_ptr(view));
 
-	posLoc = glGetUniformLocation(m_shader->ID, "projection");
+	posLoc = glGetUniformLocation(shader->ID, "projection");
 	glUniformMatrix4fv(posLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-	//Finally, Draw
 	if(m_indices.empty())
 		glDrawArrays(GL_TRIANGLES, 0, m_vertices.size());
 	else
 		glDrawElements(GL_TRIANGLES, m_indices.size(), GL_UNSIGNED_INT, 0);
 
-	//Unbind so others can render as well
 	glBindVertexArray(0);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -148,8 +145,6 @@ bool Pear::Destroy()
 	glDeleteVertexArrays(1, &VAO);
 	glDeleteBuffers(1, &VBO);
 	glBindVertexArray(0);
-	delete m_shader;
-	m_shader = nullptr;
 	return true;
 }
 
