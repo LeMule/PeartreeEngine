@@ -5,7 +5,7 @@ A base for making games? ... Eventually. Don't mind the mess!
 Third Party Libraries in use...
   - assimp-5.0.1
   - glad
-  - glfw-3.3.2
+  - SDL
   - glm
   - KHR
   - stb_image
@@ -16,15 +16,15 @@ Platforms...
   - MAC ( Probably Not :) )
 
 Compilers...
+  - clang (YES)
   - MSVC (YES)
   - gcc (Untested.)
-  - clang (Untested.)
-
 
 Major TODOs...
   - BETTER ABSTRACTIONS...
-  - Probably just revisit most of the code.. Yeah. We have decent proofs of concept though!
   - Integrate "self compiler" for the game development portion.
-  - XMLParser
+    - This would be some kind of scripting engine to speed up dev. (Maybe not worth the effort)
+  - XMLParser (better/faster?)
   - An ACTUAL BaseGame/GDK (No plans on going down the editor route)
   - Would be cool to write our own math lib :)
+  - Physics/Collisions!
