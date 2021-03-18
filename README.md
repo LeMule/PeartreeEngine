@@ -28,3 +28,6 @@ Major TODOs...
   - An ACTUAL BaseGame/GDK (No plans on going down the editor route)
   - Would be cool to write our own math lib :)
   - Physics/Collisions!
+
+Simple Demo
+https://www.youtube.com/watch?v=ezaTwz2_iio
