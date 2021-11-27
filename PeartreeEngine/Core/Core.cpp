@@ -1,4 +1,6 @@
+#ifdef _WIN32
 #pragma once
+#endif
 
 /*These will enable essentially what they imply, logged to the console. */
 //#define __BENCHMARK_RENDERLOOP__
@@ -13,12 +15,12 @@
 #include <SDL.h>
 #include <SDL_syswm.h>
 #include <SDL_opengl.h>
+#include <stb_image.h>
 
 #ifdef _WIN32
 #include <Windows.h>
 #endif
 
-#include "Model.h"
 #include "Pear.h"
 #include "Logging.h"
 #include "Camera.h"
@@ -31,9 +33,7 @@ void OnMouseMotion(SDL_Window* window, double xpos, double ypos);
 void OnMouseScroll(SDL_Window* window, double xoffset, double yoffset);
 void ProcessInput(SDL_Window* window);
 
-//Test Stuff. Eventually move to a basegame.
-void InitTestPearBatch();
-std::deque<Pear*> gameObjects;
+static unsigned int TextureFromFile(const char* path, const std::string& directory, bool gamma);
 
 //Core Vars
 std::string m_GamesFolder;
@@ -71,6 +71,9 @@ int main(int argc, const char** argv)
 	else
 		m_GamesFolder = "../../../../BaseGame/"; //Default folder if we navigate from the Core's root build folder.
 #endif
+
+	m_GamesFolder = "../../../../BaseGame/";
+	std::cout << m_GamesFolder << "\n";
 
 	if (SDL_Init(SDL_INIT_VIDEO) != 0)
 	{
@@ -135,12 +138,9 @@ int main(int argc, const char** argv)
 
 	//Shaders
 	//We need a better way of handling these obviously.
-	const std::string vertexShaderFile = m_GamesFolder + "Media/Shaders/BaseVertexShader.glsl";
-	const std::string fragmentShaderFile = m_GamesFolder + "Media/Shaders/BaseFragmentShader.glsl";
+	const std::string vertexShaderFile = "../Shaders/BaseVertexShader.glsl";
+	const std::string fragmentShaderFile = "../Shaders/BaseFragmentShader.glsl";
 	Shader* baseShader = new Shader(vertexShaderFile, fragmentShaderFile);
-
-	//Creates our Game Objects that we will be rendering
-	InitTestPearBatch();
 	
 	while (running)
 	{
@@ -155,23 +155,23 @@ int main(int argc, const char** argv)
 		glm::mat4 view = camera.GetViewMatrix();
 		pearSpace.view = view;
 		
-		std::deque<Pear*>::iterator goIt = gameObjects.begin();
-		while( goIt != gameObjects.end() )
-		{		
-			(*goIt)->Draw(baseShader, pearSpace.model, pearSpace.view, pearSpace.projection);
-			goIt++;
-		}
+		// std::deque<Pear*>::iterator goIt = gameObjects.begin();
+		// while( goIt != gameObjects.end() )
+		// {		
+		// 	(*goIt)->Draw(baseShader, pearSpace.model, pearSpace.view, pearSpace.projection);
+		// 	goIt++;
+		// }
 		
 		SDL_GL_SwapWindow(window);
 	}
 
-	std::deque<Pear*>::iterator goIt = gameObjects.begin();
-	while (goIt != gameObjects.end())
-	{
-		delete (*goIt);
-		(*goIt) = nullptr;
-		goIt++;
-	}
+	// std::deque<Pear*>::iterator goIt = gameObjects.begin();
+	// while (goIt != gameObjects.end())
+	// {
+	// 	delete (*goIt);
+	// 	(*goIt) = nullptr;
+	// 	goIt++;
+	// }
 
 	SDL_DestroyWindow(window);
 	SDL_Quit();
@@ -275,99 +275,50 @@ void ProcessInput(SDL_Window* window)
 			}
 		}
 		break;
-		case SDL_MOUSEMOTION:
-			static int x, y = 0;
-			x += evt.motion.xrel;
-			y += evt.motion.yrel;
-			OnMouseMotion(window, x, y);
-			break;
+		// case SDL_MOUSEMOTION:
+		// 	static int x, y = 0;
+		// 	x += evt.motion.xrel;
+		// 	y += evt.motion.yrel;
+		// 	OnMouseMotion(window, x, y);
+		// 	break;
 		}
 	}
 }	
 
-//Game Code.
-void InitPear(std::deque<Pear*>& _gameObjects,
-	std::vector<float>& _vertices,
-	std::vector<int>& _indices,
-	std::vector<unsigned int> _textureIDs)
+static unsigned int TextureFromFile(const char* path, const std::string& directory, bool gamma)
 {
-	_gameObjects.push_back(new Pear(_vertices, _indices, _textureIDs));
-};
+	std::string filename = std::string(path);
 
-void InitTestPearBatch()
-{
-	std::vector<int> indices = std::vector<int>();
-	//Hard-code these beauties :) ... we should really have some kind of parser.
-	std::vector<float> vertices =
+	unsigned int textureID;
+	glGenTextures(1, &textureID);
+	int width, height, nrComponents;
+	unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
+	if (data)
 	{
-		// positions          // colors          // texture coords
-		-0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
-		 0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-		 0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
-		 0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
-		-0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
-		-0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
-							  
-		-0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
-		 0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-		 0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
-		 0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
-		-0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
-		-0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
-							  
-		-0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-		-0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
-		-0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
-		-0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
-		-0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
-		-0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-							  
-		 0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-		 0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
-		 0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
-		 0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
-		 0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
-		 0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-							  
-		-0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
-		 0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
-		 0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-		 0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-		-0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
-		-0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
-							  
-		-0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
-		 0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
-		 0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-		 0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
-		-0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
-		-0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f,  0.0f, 1.0f
-	};
+		GLenum format = GL_BLUE; //default.
+		if (nrComponents == 1)
+			format = GL_RED;
+		else if (nrComponents == 3)
+			format = GL_RGB;
+		else if (nrComponents == 4)
+			format = GL_RGBA;
 
-	unsigned int tex = PearTree::Model::TextureFromFile("Media/Graphics/HappyDog.png", m_GamesFolder, false);
-	unsigned int tex2 = PearTree::Model::TextureFromFile("Media/Graphics/Mario.jpg", m_GamesFolder, false);
-	std::vector<unsigned int> textureIDs = { tex, tex2 };
-	unsigned int MAX_NUM_GAME_OBJECTS = 100;
-	unsigned int count = 0;
+		glBindTexture(GL_TEXTURE_2D, textureID);
+		glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+		glGenerateMipmap(GL_TEXTURE_2D);
 
-	bool spawning_column = false;
-	unsigned int column = 1;
-
-	BenchmarkTimer bt("Loading World...", std::cout);
-	for (int i = -8; i != 8; i++)
-	{
-		for (int j = -8; j != 8; j++)
-		{
-			for (int k = -8; k != 8; k++)
-			{
-				InitPear(gameObjects, vertices, indices, textureIDs);
-				gameObjects.at(count)->SetXPos((float)i);
-				gameObjects.at(count)->SetYPos((float)k);
-				gameObjects.at(count)->SetZPos((float)j - 24.f);
-				count++;
-			}
-		}
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		stbi_image_free(data);
 	}
+	else
+	{
+		std::cout << "Texture failed to load at path: " << path << std::endl;
+		stbi_image_free(data);
+	}
+	return textureID;
 }
 
 
